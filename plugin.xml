@@ -2,13 +2,14 @@
 <plugin>
     <class>org.igniterealtime.openfire.plugins.httpfileupload.HttpFileUploadPlugin</class>
     <name>HTTP File Upload</name>
-    <description>Allows clients to share files, as described in the XEP-0363 'HTTP File Upload' specification.</description>
-    <author>Guus der Kinderen</author>
+    <description>Allows clients to share files, as described in the XEP-0363 'HTTP File Upload' specification (Original by Guus der Kinderen)</description>
+    <author>Dir ZS IKT C44</author>
     <version>${project.version}</version>
-    <date>2025-06-12</date>
+    <date>2025-07-02</date>
     <minServerVersion>5.0.0</minServerVersion>
     <csrfProtectionEnabled>true</csrfProtectionEnabled>
-    
+    <databaseKey>httpfileupload</databaseKey>
+    <databaseVersion>1</databaseVersion>
     <adminconsole>
       <tab id="tab-server">
         <sidebar id="sidebar-server-settings">

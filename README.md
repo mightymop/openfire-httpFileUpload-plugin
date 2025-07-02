@@ -39,6 +39,28 @@ XML property can be used (as the content of the openfire.xml file can be differe
 
 When both a regular and an XML property is defined, then the XML property value will take precedence.
 
+### Storage of data on sqlserver database
+
+- XML property: `plugin.httpfileupload.serverspecific.useDatabase`
+- System Property: `plugin.httpfileupload.useDatabase`
+- default: false (look storage on filesystem)
+
+### Auto purging files
+
+- XML property: `plugin.httpfileupload.serverspecific.purge_storage.enable`
+- System Property: `plugin.httpfileupload.purge_storage.enable`
+- default: true 
+
+- XML property: `plugin.httpfileupload.serverspecific.purge_storage.store_max_days`
+- System Property: `plugin.httpfileupload.purge_storage.store_max_days`
+- default: 31 
+
+### Force slots for datauploads
+
+- XML property: `plugin.httpfileupload.serverspecific.slots`
+- System Property: `plugin.httpfileupload.slots`
+- default: true 
+
 ### Storage of data on filesystem
 
 - XML property: `plugin.httpfileupload.serverspecific.fileRepo`

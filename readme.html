@@ -111,6 +111,36 @@
     Http File Upload Settings. The page does not support all available settings but compares the configured announced URL with the actual URL. 
 </p>
 
+
+<h3>Storage of data on sqlserver database</h3>
+
+<table>
+    <tr><th>XML property</th> <td><samp>plugin.httpfileupload.serverspecific.useDatabase</samp></td></tr>
+    <tr><th>System Property</th> <td><samp>plugin.httpfileupload.useDatabase</samp></td></tr>
+    <tr><th>default</th> <td><samp>false (look storage on filesystem)</samp></td></tr>
+</table>
+
+<h3>Auto purging files</h3>
+
+<table>
+    <tr><th>XML property</th> <td><samp>plugin.httpfileupload.serverspecific.purge_storage.enable</samp></td></tr>
+    <tr><th>System Property</th> <td><samp>plugin.httpfileupload.purge_storage.enable</samp></td></tr>
+    <tr><th>default</th> <td><samp>true</samp></td></tr>
+</table>
+<table>
+    <tr><th>XML property</th> <td><samp>plugin.httpfileupload.serverspecific.purge_storage.store_max_days</samp></td></tr>
+    <tr><th>System Property</th> <td><samp>plugin.httpfileupload.purge_storage.store_max_days</samp></td></tr>
+    <tr><th>default</th> <td><samp>31</samp></td></tr>
+</table>
+
+<h3>Force slots for datauploads</h3>
+
+<table>
+    <tr><th>XML property</th> <td><samp>plugin.httpfileupload.serverspecific.slots</samp></td></tr>
+    <tr><th>System Property</th> <td><samp>plugin.httpfileupload.slots</samp></td></tr>
+    <tr><th>default</th> <td><samp>true</samp></td></tr>
+</table>
+
 <h3>Storage of data on filesystem</h3>
 
 <table>

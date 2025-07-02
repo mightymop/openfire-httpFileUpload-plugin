@@ -48,511 +48,565 @@ import nl.goodbytes.xmpp.xep0363.Repository;
 import nl.goodbytes.xmpp.xep0363.RepositoryManager;
 import nl.goodbytes.xmpp.xep0363.SlotManager;
 import nl.goodbytes.xmpp.xep0363.clamav.ClamavMalwareScanner;
+import nl.goodbytes.xmpp.xep0363.repository.DatabaseRepository;
 import nl.goodbytes.xmpp.xep0363.repository.DirectoryRepository;
 import nl.goodbytes.xmpp.xep0363.repository.TempDirectoryRepository;
 
 /**
  * Created by guus on 18-11-17.
  */
-public class HttpFileUploadPlugin implements Plugin, PropertyEventListener
-{
-    private static final Logger Log = LoggerFactory.getLogger( HttpFileUploadPlugin.class );
+public class HttpFileUploadPlugin implements Plugin, PropertyEventListener {
+	private static final Logger Log = LoggerFactory.getLogger(HttpFileUploadPlugin.class);
 
-    /**
-     * Controls the scheme that is used in URLs advertised for file uploads/downloads. This property ignored if XML
-     * property 'plugin.httpfileupload.serverspecific.announcedWebProtocol' is defined.
-     *
-     * Unlike this (database-based) property, the XML property can be assigned different values on each server, which
-     * can come in handy in an Openfire cluster.
-     */
-    public static final SystemProperty<String> ANNOUNCED_WEB_PROTOCOL = SystemProperty.Builder.ofType(String.class)
-        .setKey("plugin.httpfileupload.announcedWebProtocol")
-        .setDefaultValue("https")
-        .setDynamic(true)
-        .setPlugin("HTTP File Upload")
-        .addListener(newValue -> applyWebProtocolConfiguration())
-        .build();
+	public static final SystemProperty<Boolean> AUTO_PURGE = SystemProperty.Builder.ofType(Boolean.class)
+			.setKey("plugin.httpfileupload.purge_storage.enable").setDefaultValue(true).setDynamic(true)
+			.setPlugin("HTTP File Upload").addListener(newValue -> applyPurgeConfiguration()).build();
 
-    /**
-     * Controls the server address that is used in URLs advertised for file uploads/downloads. This property ignored if
-     * XML property 'plugin.httpfileupload.serverspecific.announcedWebHost' is defined.
-     *
-     * Unlike this (database-based) property, the XML property can be assigned different values on each server, which
-     * can come in handy in an Openfire cluster.
-     */
-    public static final SystemProperty<String> ANNOUNCED_WEB_HOST = SystemProperty.Builder.ofType(String.class)
-        .setKey("plugin.httpfileupload.announcedWebHost")
-        .setDefaultValue(XMPPServer.getInstance().getServerInfo().getHostname())
-        .setDynamic(true)
-        .setPlugin("HTTP File Upload")
-        .addListener(newValue -> applyWebHostConfiguration())
-        .build();
+	public static final SystemProperty<Integer> AUTO_PURGE_MAXDAYS = SystemProperty.Builder.ofType(Integer.class)
+			.setKey("plugin.httpfileupload.purge_storage.store_max_days")
+			.setDefaultValue(31).setDynamic(true)
+			.setPlugin("HTTP File Upload").addListener(newValue -> applyMaxDaysConfiguration()).build();
 
-    /**
-     * Controls the TCP port that is used in URLs advertised for file uploads/downloads. This property ignored if XML
-     * property 'plugin.httpfileupload.serverspecific.announcedWebPort' is defined.
-     *
-     * Unlike this (database-based) property, the XML property can be assigned different values on each server, which
-     * can come in handy in an Openfire cluster.
-     */
-    public static final SystemProperty<Integer> ANNOUNCED_WEB_PORT = SystemProperty.Builder.ofType(Integer.class)
-        .setKey("plugin.httpfileupload.announcedWebPort")
-        .setDefaultValue(HttpBindManager.HTTP_BIND_SECURE_PORT.getValue())
-        .setDynamic(true)
-        .setPlugin("HTTP File Upload")
-        .addListener(newValue -> applyWebPortConfiguration())
-        .build();
+	public static final SystemProperty<Boolean> SLOTS = SystemProperty.Builder.ofType(Boolean.class)
+			.setKey("plugin.httpfileupload.slots").setDefaultValue(true).setDynamic(true).setPlugin("HTTP File Upload")
+			.addListener(newValue -> applySlotsConfiguration()).build();
 
-    /**
-     * Controls the context root that is used in URLs advertised for file uploads/downloads. This property ignored if
-     * XML property 'plugin.httpfileupload.serverspecific.announcedWebContextRoot' is defined.
-     *
-     * Unlike this (database-based) property, the XML property can be assigned different values on each server, which
-     * can come in handy in an Openfire cluster.
-     */
-    public static final SystemProperty<String> ANNOUNCED_WEB_CONTEXT_ROOT = SystemProperty.Builder.ofType(String.class)
-        .setKey("plugin.httpfileupload.announcedWebContextRoot")
-        .setDefaultValue("/httpfileupload")
-        .setDynamic(false)
-        .setPlugin("HTTP File Upload")
-        .build();
+	public static final SystemProperty<Boolean> DATABASE_REPO = SystemProperty.Builder.ofType(Boolean.class)
+			.setKey("plugin.httpfileupload.useDatabase").setDefaultValue(false).setDynamic(true)
+			.setPlugin("HTTP File Upload").addListener(newValue -> applyDatabaseRepoConfiguration()).build();
 
-    /**
-     * Defines the maximum size (in bytes) of files that can be uploaded. This property ignored if XML property
-     * 'plugin.httpfileupload.serverspecific.maxFileSize' is defined.
-     *
-     * Unlike this (database-based) property, the XML property can be assigned different values on each server, which
-     * can come in handy in an Openfire cluster.
-     */
-    public static final SystemProperty<Long> MAX_FILE_SIZE = SystemProperty.Builder.ofType(Long.class)
-        .setKey("plugin.httpfileupload.maxFileSize")
-        .setDefaultValue(SlotManager.DEFAULT_MAX_FILE_SIZE)
-        .setDynamic(true)
-        .setPlugin("HTTP File Upload")
-        .addListener(newValue -> applyMaxFileSizeConfiguration())
-        .build();
+	/**
+	 * Controls the scheme that is used in URLs advertised for file
+	 * uploads/downloads. This property ignored if XML property
+	 * 'plugin.httpfileupload.serverspecific.announcedWebProtocol' is defined.
+	 *
+	 * Unlike this (database-based) property, the XML property can be assigned
+	 * different values on each server, which can come in handy in an Openfire
+	 * cluster.
+	 */
+	public static final SystemProperty<String> ANNOUNCED_WEB_PROTOCOL = SystemProperty.Builder.ofType(String.class)
+			.setKey("plugin.httpfileupload.announcedWebProtocol").setDefaultValue("https").setDynamic(true)
+			.setPlugin("HTTP File Upload").addListener(newValue -> applyWebProtocolConfiguration()).build();
 
-    /**
-     * Defines the file system path (directory) in which data is stored on the server. If the path is absent, or
-     * invalid, a temporary directory will be used. This property ignored if XML property
-     * 'plugin.httpfileupload.serverspecific.fileRepo' is defined.
-     *
-     * Unlike this (database-based) property, the XML property can be assigned different values on each server, which
-     * can come in handy in an Openfire cluster.
-     */
-    public static final SystemProperty<String> FILE_REPO = SystemProperty.Builder.ofType(String.class)
-        .setKey("plugin.httpfileupload.fileRepo")
-        .setDynamic(false)
-        .setPlugin("HTTP File Upload")
-        .build();
+	/**
+	 * Controls the server address that is used in URLs advertised for file
+	 * uploads/downloads. This property ignored if XML property
+	 * 'plugin.httpfileupload.serverspecific.announcedWebHost' is defined.
+	 *
+	 * Unlike this (database-based) property, the XML property can be assigned
+	 * different values on each server, which can come in handy in an Openfire
+	 * cluster.
+	 */
+	public static final SystemProperty<String> ANNOUNCED_WEB_HOST = SystemProperty.Builder.ofType(String.class)
+			.setKey("plugin.httpfileupload.announcedWebHost")
+			.setDefaultValue(XMPPServer.getInstance().getServerInfo().getHostname()).setDynamic(true)
+			.setPlugin("HTTP File Upload").addListener(newValue -> applyWebHostConfiguration()).build();
 
+	/**
+	 * Controls the TCP port that is used in URLs advertised for file
+	 * uploads/downloads. This property ignored if XML property
+	 * 'plugin.httpfileupload.serverspecific.announcedWebPort' is defined.
+	 *
+	 * Unlike this (database-based) property, the XML property can be assigned
+	 * different values on each server, which can come in handy in an Openfire
+	 * cluster.
+	 */
+	public static final SystemProperty<Integer> ANNOUNCED_WEB_PORT = SystemProperty.Builder.ofType(Integer.class)
+			.setKey("plugin.httpfileupload.announcedWebPort")
+			.setDefaultValue(HttpBindManager.HTTP_BIND_SECURE_PORT.getValue()).setDynamic(true)
+			.setPlugin("HTTP File Upload").addListener(newValue -> applyWebPortConfiguration()).build();
 
-    /**
-     * Controls if integration with an external (third-party) ClamAV malware scanner is enabled.
-     */
-    private static final SystemProperty<Boolean> CLAMAV_ENABLED = SystemProperty.Builder.ofType(Boolean.class)
-        .setKey("plugin.httpfileupload.clamavEnabled")
-        .setDefaultValue(false)
-        .setDynamic(true)
-        .setPlugin("HTTP File Upload")
-        .addListener(newValue -> applyClamAvConfiguration())
-        .build();
+	/**
+	 * Controls the context root that is used in URLs advertised for file
+	 * uploads/downloads. This property ignored if XML property
+	 * 'plugin.httpfileupload.serverspecific.announcedWebContextRoot' is defined.
+	 *
+	 * Unlike this (database-based) property, the XML property can be assigned
+	 * different values on each server, which can come in handy in an Openfire
+	 * cluster.
+	 */
+	public static final SystemProperty<String> ANNOUNCED_WEB_CONTEXT_ROOT = SystemProperty.Builder.ofType(String.class)
+			.setKey("plugin.httpfileupload.announcedWebContextRoot").setDefaultValue("/httpfileupload")
+			.setDynamic(false).setPlugin("HTTP File Upload").build();
 
-    /**
-     * Controls the host that is used to integrate with an external (third-party) ClamAV malware scanner daemon.
-     */
-    private static final SystemProperty<String> CLAMAV_HOST = SystemProperty.Builder.ofType(String.class)
-        .setKey("plugin.httpfileupload.clamavHost")
-        .setDefaultValue("127.0.0.1")
-        .setDynamic(true)
-        .setPlugin("HTTP File Upload")
-        .addListener(newValue -> applyClamAvConfiguration())
-        .build();
+	/**
+	 * Defines the maximum size (in bytes) of files that can be uploaded. This
+	 * property ignored if XML property
+	 * 'plugin.httpfileupload.serverspecific.maxFileSize' is defined.
+	 *
+	 * Unlike this (database-based) property, the XML property can be assigned
+	 * different values on each server, which can come in handy in an Openfire
+	 * cluster.
+	 */
+	public static final SystemProperty<Long> MAX_FILE_SIZE = SystemProperty.Builder.ofType(Long.class)
+			.setKey("plugin.httpfileupload.maxFileSize").setDefaultValue(SlotManager.DEFAULT_MAX_FILE_SIZE)
+			.setDynamic(true).setPlugin("HTTP File Upload").addListener(newValue -> applyMaxFileSizeConfiguration())
+			.build();
 
-    /**
-     * Controls the port that is used to integrate with an external (third-party) ClamAV malware scanner daemon.
-     */
-    private static final SystemProperty<Integer> CLAMAV_PORT = SystemProperty.Builder.ofType(Integer.class)
-        .setKey("plugin.httpfileupload.clamavPort")
-        .setDefaultValue(3310)
-        .setDynamic(true)
-        .setPlugin("HTTP File Upload")
-        .addListener(newValue -> applyClamAvConfiguration())
-        .build();
+	/**
+	 * Defines the file system path (directory) in which data is stored on the
+	 * server. If the path is absent, or invalid, a temporary directory will be
+	 * used. This property ignored if XML property
+	 * 'plugin.httpfileupload.serverspecific.fileRepo' is defined.
+	 *
+	 * Unlike this (database-based) property, the XML property can be assigned
+	 * different values on each server, which can come in handy in an Openfire
+	 * cluster.
+	 */
+	public static final SystemProperty<String> FILE_REPO = SystemProperty.Builder.ofType(String.class)
+			.setKey("plugin.httpfileupload.fileRepo").setDynamic(false).setPlugin("HTTP File Upload").build();
 
-    /**
-     * Controls the connection timeout that is used when integrating with an external (third-party) ClamAV malware
-     * scanner daemon.
-     */
-    private static final SystemProperty<Duration> CLAMAV_CONNECTION_TIMEOUT = SystemProperty.Builder.ofType(Duration.class)
-        .setKey("plugin.httpfileupload.clamavConnectionTimeout")
-        .setDefaultValue(Duration.ofSeconds(3))
-        .setChronoUnit(ChronoUnit.MILLIS)
-        .setDynamic(true)
-        .setPlugin("HTTP File Upload")
-        .addListener(newValue -> applyClamAvConfiguration())
-        .build();
+	/**
+	 * Controls if integration with an external (third-party) ClamAV malware scanner
+	 * is enabled.
+	 */
+	private static final SystemProperty<Boolean> CLAMAV_ENABLED = SystemProperty.Builder.ofType(Boolean.class)
+			.setKey("plugin.httpfileupload.clamavEnabled").setDefaultValue(false).setDynamic(true)
+			.setPlugin("HTTP File Upload").addListener(newValue -> applyClamAvConfiguration()).build();
 
-    private Component component;
-    private WebAppContext context;
+	/**
+	 * Controls the host that is used to integrate with an external (third-party)
+	 * ClamAV malware scanner daemon.
+	 */
+	private static final SystemProperty<String> CLAMAV_HOST = SystemProperty.Builder.ofType(String.class)
+			.setKey("plugin.httpfileupload.clamavHost").setDefaultValue("127.0.0.1").setDynamic(true)
+			.setPlugin("HTTP File Upload").addListener(newValue -> applyClamAvConfiguration()).build();
 
-    /**
-     * Returns the scheme that is used in URLs advertised for file uploads/downloads.
-     *
-     * This method will first attempt to read the configuration from the XML property
-     * 'plugin.httpfileupload.serverspecific.announcedWebProtocol'. If that is not defined, then the value of the
-     * (database) property 'plugin.httpfileupload.announcedWebProtocol' is used. When that's not defined either, then a
-     * hard-coded default is used.
-     *
-     * Note that in a cluster of Openfire, the XML property values can be different on each server, unlike regular
-     * properties that are based on database values.
-     *
-     * @return a scheme
-     */
-    public static String getWebProtocolFromProperties() {
-        return JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.announcedWebProtocol", ANNOUNCED_WEB_PROTOCOL.getValue());
-    }
+	/**
+	 * Controls the port that is used to integrate with an external (third-party)
+	 * ClamAV malware scanner daemon.
+	 */
+	private static final SystemProperty<Integer> CLAMAV_PORT = SystemProperty.Builder.ofType(Integer.class)
+			.setKey("plugin.httpfileupload.clamavPort").setDefaultValue(3310).setDynamic(true)
+			.setPlugin("HTTP File Upload").addListener(newValue -> applyClamAvConfiguration()).build();
 
-    /**
-     * Returns the server address that is used in URLs advertised for file uploads/downloads.
-     *
-     * This method will first attempt to read the configuration from the XML property
-     * 'plugin.httpfileupload.serverspecific.announcedWebHost'. If that is not defined, then the value of the
-     * (database) property 'plugin.httpfileupload.announcedWebHost' is used. When that's not defined either, then a
-     * hard-coded default is used.
-     *
-     * Note that in a cluster of Openfire, the XML property values can be different on each server, unlike regular
-     * properties that are based on database values.
-     *
-     * @return A host name
-     */
-    public static String getWebHostFromProperties() {
-        return JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.announcedWebHost", ANNOUNCED_WEB_HOST.getValue());
-    }
+	/**
+	 * Controls the connection timeout that is used when integrating with an
+	 * external (third-party) ClamAV malware scanner daemon.
+	 */
+	private static final SystemProperty<Duration> CLAMAV_CONNECTION_TIMEOUT = SystemProperty.Builder
+			.ofType(Duration.class).setKey("plugin.httpfileupload.clamavConnectionTimeout")
+			.setDefaultValue(Duration.ofSeconds(3)).setChronoUnit(ChronoUnit.MILLIS).setDynamic(true)
+			.setPlugin("HTTP File Upload").addListener(newValue -> applyClamAvConfiguration()).build();
 
-    /**
-     * Returns the TCP port that is used in URLs advertised for file uploads/downloads.
-     *
-     * This method will first attempt to read the configuration from the XML property
-     * 'plugin.httpfileupload.serverspecific.announcedWebPort'. If that is not defined, then the value of the
-     * (database) property 'plugin.httpfileupload.announcedWebPort' is used. When that's not defined either, then a
-     * hard-coded default is used.
-     *
-     * Note that in a cluster of Openfire, the XML property values can be different on each server, unlike regular
-     * properties that are based on database values.
-     *
-     * @return a TCP port
-     */
-    public static int getWebPortFromProperties() {
-        final String xmlProperty = JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.announcedWebPort");
-        final String dbProperty = JiveGlobals.getProperty(ANNOUNCED_WEB_PORT.getKey());
-        if (xmlProperty == null && dbProperty == null) {
-            // Issue #37: Use a port that matches the scheme used, if no value is set explicitly.
-            return getWebProtocolFromProperties().equalsIgnoreCase("http") ? HttpBindManager.HTTP_BIND_PORT.getValue() : ANNOUNCED_WEB_PORT.getDefaultValue();
-        }
-        return JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.announcedWebPort", ANNOUNCED_WEB_PORT.getValue());
-    }
+	private Component component;
+	private WebAppContext context;
 
-    /**
-     * Returns the context root that is used in URLs advertised for file uploads/downloads.
-     *
-     * This method will first attempt to read the configuration from the XML property
-     * 'plugin.httpfileupload.serverspecific.announcedWebContextRoot'. If that is not defined, then the value of the
-     * (database) property 'plugin.httpfileupload.announcedWebContextRoot' is used. When that's not defined either, then
-     * a hard-coded default is used.
-     *
-     * Note that in a cluster of Openfire, the XML property values can be different on each server, unlike regular
-     * properties that are based on database values.
-     *
-     * @return context root
-     */
-    public static String getWebContextRootFromProperties() {
-        return JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.announcedWebContextRoot", ANNOUNCED_WEB_CONTEXT_ROOT.getValue());
-    }
+	/**
+	 * Returns the scheme that is used in URLs advertised for file
+	 * uploads/downloads.
+	 *
+	 * This method will first attempt to read the configuration from the XML
+	 * property 'plugin.httpfileupload.serverspecific.announcedWebProtocol'. If that
+	 * is not defined, then the value of the (database) property
+	 * 'plugin.httpfileupload.announcedWebProtocol' is used. When that's not defined
+	 * either, then a hard-coded default is used.
+	 *
+	 * Note that in a cluster of Openfire, the XML property values can be different
+	 * on each server, unlike regular properties that are based on database values.
+	 *
+	 * @return a scheme
+	 */
+	public static String getWebProtocolFromProperties() {
+		return JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.announcedWebProtocol",
+				ANNOUNCED_WEB_PROTOCOL.getValue());
+	}
 
-    /**
-     * Returns the maximum size (in bytes) of files that can be uploaded.
-     *
-     * This method will first attempt to read the configuration from the XML property
-     * 'plugin.httpfileupload.serverspecific.maxFileSize'. If that is not defined, then the value of the
-     * (database) property 'plugin.httpfileupload.maxFileSize' is used. When that's not defined either, then a
-     * hard-coded default is used.
-     *
-     * Note that in a cluster of Openfire, the XML property values can be different on each server, unlike regular
-     * properties that are based on database values.
-     *
-     * @return size in bytes
-     */
-    public static long getMaxFileSizeProperties() {
-        final String xmlProperty = JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.maxFileSize");
-        if (xmlProperty != null) {
-            try {
-                return Long.parseLong(xmlProperty);
-            } catch (NumberFormatException ex) {
-                Log.debug("Ignoring invalid long value for property {}: {}", "plugin.httpfileupload.serverspecific.maxFileSize", xmlProperty, ex);
-            }
-        }
-        return MAX_FILE_SIZE.getValue();
-    }
+	/**
+	 * Returns the server address that is used in URLs advertised for file
+	 * uploads/downloads.
+	 *
+	 * This method will first attempt to read the configuration from the XML
+	 * property 'plugin.httpfileupload.serverspecific.announcedWebHost'. If that is
+	 * not defined, then the value of the (database) property
+	 * 'plugin.httpfileupload.announcedWebHost' is used. When that's not defined
+	 * either, then a hard-coded default is used.
+	 *
+	 * Note that in a cluster of Openfire, the XML property values can be different
+	 * on each server, unlike regular properties that are based on database values.
+	 *
+	 * @return A host name
+	 */
+	public static String getWebHostFromProperties() {
+		return JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.announcedWebHost",
+				ANNOUNCED_WEB_HOST.getValue());
+	}
 
-    /**
-     * Defines the file system path (directory) in which data is stored on the server. If the path is absent, or
-     * invalid, a temporary directory will be used.
-     *
-     * This method will first attempt to read the configuration from the XML property
-     * 'plugin.httpfileupload.serverspecific.fileRepo'. If that is not defined, then the value of the
-     * (database) property 'plugin.httpfileupload.fileRepo' is used. When that's not defined either, then a
-     * hard-coded default is used.
-     *
-     * Note that in a cluster of Openfire, the XML property values can be different on each server, unlike regular
-     * properties that are based on database values.
-     *
-     * @return file system path
-     */
-    public static String getFileRepoFromProperties() {
-        return JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.fileRepo", FILE_REPO.getValue());
-    }
+	/**
+	 * Returns the TCP port that is used in URLs advertised for file
+	 * uploads/downloads.
+	 *
+	 * This method will first attempt to read the configuration from the XML
+	 * property 'plugin.httpfileupload.serverspecific.announcedWebPort'. If that is
+	 * not defined, then the value of the (database) property
+	 * 'plugin.httpfileupload.announcedWebPort' is used. When that's not defined
+	 * either, then a hard-coded default is used.
+	 *
+	 * Note that in a cluster of Openfire, the XML property values can be different
+	 * on each server, unlike regular properties that are based on database values.
+	 *
+	 * @return a TCP port
+	 */
+	public static int getWebPortFromProperties() {
+		final String xmlProperty = JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.announcedWebPort");
+		final String dbProperty = JiveGlobals.getProperty(ANNOUNCED_WEB_PORT.getKey());
+		if (xmlProperty == null && dbProperty == null) {
+			// Issue #37: Use a port that matches the scheme used, if no value is set
+			// explicitly.
+			return getWebProtocolFromProperties().equalsIgnoreCase("http") ? HttpBindManager.HTTP_BIND_PORT.getValue()
+					: ANNOUNCED_WEB_PORT.getDefaultValue();
+		}
+		return JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.announcedWebPort",
+				ANNOUNCED_WEB_PORT.getValue());
+	}
 
-    /**
-     * Re-evaluates property values and applies any change to affects the web protocol to be used when announcing
-     * endpoint URLs.
-     */
-    public static void applyWebProtocolConfiguration() {
-        final SlotManager slotManager = SlotManager.getInstance();
-        final String existing = slotManager.getWebProtocol();
-        final String updated = getWebProtocolFromProperties();
-        if (!Objects.equals(existing, updated)) {
-            slotManager.setWebProtocol(updated);
+	/**
+	 * Returns the context root that is used in URLs advertised for file
+	 * uploads/downloads.
+	 *
+	 * This method will first attempt to read the configuration from the XML
+	 * property 'plugin.httpfileupload.serverspecific.announcedWebContextRoot'. If
+	 * that is not defined, then the value of the (database) property
+	 * 'plugin.httpfileupload.announcedWebContextRoot' is used. When that's not
+	 * defined either, then a hard-coded default is used.
+	 *
+	 * Note that in a cluster of Openfire, the XML property values can be different
+	 * on each server, unlike regular properties that are based on database values.
+	 *
+	 * @return context root
+	 */
+	public static String getWebContextRootFromProperties() {
+		return JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.announcedWebContextRoot",
+				ANNOUNCED_WEB_CONTEXT_ROOT.getValue());
+	}
 
-            // Issue #37: when switching to a new scheme, default to the corresponding port.
-            applyWebPortConfiguration();
+	/**
+	 * Returns the maximum size (in bytes) of files that can be uploaded.
+	 *
+	 * This method will first attempt to read the configuration from the XML
+	 * property 'plugin.httpfileupload.serverspecific.maxFileSize'. If that is not
+	 * defined, then the value of the (database) property
+	 * 'plugin.httpfileupload.maxFileSize' is used. When that's not defined either,
+	 * then a hard-coded default is used.
+	 *
+	 * Note that in a cluster of Openfire, the XML property values can be different
+	 * on each server, unlike regular properties that are based on database values.
+	 *
+	 * @return size in bytes
+	 */
+	public static long getMaxFileSizeProperties() {
+		final String xmlProperty = JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.maxFileSize");
+		if (xmlProperty != null) {
+			try {
+				return Long.parseLong(xmlProperty);
+			} catch (NumberFormatException ex) {
+				Log.debug("Ignoring invalid long value for property {}: {}",
+						"plugin.httpfileupload.serverspecific.maxFileSize", xmlProperty, ex);
+			}
+		}
+		return MAX_FILE_SIZE.getValue();
+	}
 
-            Log.info("Reconfigured announced web protocol from '{}' to '{}'. New web endpoint: {}://{}:{}{} with a max file size of {} bytes.",
-                existing, updated, slotManager.getWebProtocol(), slotManager.getWebHost(), slotManager.getWebPort(), slotManager.getWebContextRoot(), slotManager.getMaxFileSize());
-        }
-    }
+	/**
+	 * Defines the file system path (directory) in which data is stored on the
+	 * server. If the path is absent, or invalid, a temporary directory will be
+	 * used.
+	 *
+	 * This method will first attempt to read the configuration from the XML
+	 * property 'plugin.httpfileupload.serverspecific.fileRepo'. If that is not
+	 * defined, then the value of the (database) property
+	 * 'plugin.httpfileupload.fileRepo' is used. When that's not defined either,
+	 * then a hard-coded default is used.
+	 *
+	 * Note that in a cluster of Openfire, the XML property values can be different
+	 * on each server, unlike regular properties that are based on database values.
+	 *
+	 * @return file system path
+	 */
+	public static String getFileRepoFromProperties() {
+		return JiveGlobals.getXMLProperty("plugin.httpfileupload.serverspecific.fileRepo", FILE_REPO.getValue());
+	}
 
-    /**
-     * Re-evaluates property values and applies any change to affects the web host to be used when announcing
-     * endpoint URLs.
-     */
-    public static void applyWebHostConfiguration() {
-        final SlotManager slotManager = SlotManager.getInstance();
-        final String existing = slotManager.getWebHost();
-        final String updated = getWebHostFromProperties();
-        if (!Objects.equals(existing, updated)) {
-            slotManager.setWebHost(updated);
-            Log.info("Reconfigured announced web host from '{}' to '{}'. New web endpoint: {}://{}:{}{} with a max file size of {} bytes.",
-                existing, updated, slotManager.getWebProtocol(), slotManager.getWebHost(), slotManager.getWebPort(), slotManager.getWebContextRoot(), slotManager.getMaxFileSize());
-        }
-    }
+	/**
+	 * Re-evaluates property values and applies any change to affects the web
+	 * protocol to be used when announcing endpoint URLs.
+	 */
+	public static void applyWebProtocolConfiguration() {
+		final SlotManager slotManager = SlotManager.getInstance();
+		final String existing = slotManager.getWebProtocol();
+		final String updated = getWebProtocolFromProperties();
+		if (!Objects.equals(existing, updated)) {
+			slotManager.setWebProtocol(updated);
 
-    /**
-     * Re-evaluates property values and applies any change to affects the web port to be used when announcing
-     * endpoint URLs.
-     */
-    public static void applyWebPortConfiguration() {
-        final SlotManager slotManager = SlotManager.getInstance();
-        final Integer existing = slotManager.getWebPort();
-        final Integer updated = getWebPortFromProperties();
-        if (!Objects.equals(existing, updated)) {
-            slotManager.setWebPort(updated);
-            Log.info("Reconfigured announced web port from '{}' to '{}'. New web endpoint: {}://{}:{}{} with a max file size of {} bytes.",
-                existing, updated, slotManager.getWebProtocol(), slotManager.getWebHost(), slotManager.getWebPort(), slotManager.getWebContextRoot(), slotManager.getMaxFileSize());
-        }
-    }
+			// Issue #37: when switching to a new scheme, default to the corresponding port.
+			applyWebPortConfiguration();
 
-    /**
-     * Re-evaluates property values and applies any change to affects the web context root to be used when announcing
-     * endpoint URLs.
-     */
-    public static void applyWebContextRootConfiguration() {
-        final SlotManager slotManager = SlotManager.getInstance();
-        final String existing = slotManager.getWebContextRoot();
-        final String updated = getWebContextRootFromProperties();
-        if (!Objects.equals(existing, updated)) {
-            slotManager.setWebContextRoot(updated);
-            Log.info("Reconfigured announced web context root from '{}' to '{}'. New web endpoint: {}://{}:{}{} with a max file size of {} bytes.",
-                existing, updated, slotManager.getWebProtocol(), slotManager.getWebHost(), slotManager.getWebPort(), slotManager.getWebContextRoot(), slotManager.getMaxFileSize());
-        }
-    }
+			Log.info(
+					"Reconfigured announced web protocol from '{}' to '{}'. New web endpoint: {}://{}:{}{} with a max file size of {} bytes.",
+					existing, updated, slotManager.getWebProtocol(), slotManager.getWebHost(), slotManager.getWebPort(),
+					slotManager.getWebContextRoot(), slotManager.getMaxFileSize());
+		}
+	}
 
-    /**
-     * Re-evaluates property values and applies any change to affects maximum allowable file size of content to be
-     * uploaded.
-     */
-    public static void applyMaxFileSizeConfiguration() {
-        final SlotManager slotManager = SlotManager.getInstance();
-        final Long existing = slotManager.getMaxFileSize();
-        final Long updated = getMaxFileSizeProperties();
-        if (!Objects.equals(existing, updated)) {
-            slotManager.setMaxFileSize(updated);
-            Log.info("Reconfigured maximum file size from '{}' to '{}'.", existing, updated);
-        }
-    }
+	/**
+	 * Re-evaluates property values and applies any change to affects the web host
+	 * to be used when announcing endpoint URLs.
+	 */
+	public static void applyWebHostConfiguration() {
+		final SlotManager slotManager = SlotManager.getInstance();
+		final String existing = slotManager.getWebHost();
+		final String updated = getWebHostFromProperties();
+		if (!Objects.equals(existing, updated)) {
+			slotManager.setWebHost(updated);
+			Log.info(
+					"Reconfigured announced web host from '{}' to '{}'. New web endpoint: {}://{}:{}{} with a max file size of {} bytes.",
+					existing, updated, slotManager.getWebProtocol(), slotManager.getWebHost(), slotManager.getWebPort(),
+					slotManager.getWebContextRoot(), slotManager.getMaxFileSize());
+		}
+	}
 
-    public static void applyClamAvConfiguration()
-    {
-        final MalwareScannerManager manager = MalwareScannerManager.getInstance();
-        manager.destroy();
+	/**
+	 * Re-evaluates property values and applies any change to affects the web port
+	 * to be used when announcing endpoint URLs.
+	 */
+	public static void applyWebPortConfiguration() {
+		final SlotManager slotManager = SlotManager.getInstance();
+		final Integer existing = slotManager.getWebPort();
+		final Integer updated = getWebPortFromProperties();
+		if (!Objects.equals(existing, updated)) {
+			slotManager.setWebPort(updated);
+			Log.info(
+					"Reconfigured announced web port from '{}' to '{}'. New web endpoint: {}://{}:{}{} with a max file size of {} bytes.",
+					existing, updated, slotManager.getWebProtocol(), slotManager.getWebHost(), slotManager.getWebPort(),
+					slotManager.getWebContextRoot(), slotManager.getMaxFileSize());
+		}
+	}
 
-        if (CLAMAV_ENABLED.getValue()) {
-            final MalwareScanner clamAv = new ClamavMalwareScanner(CLAMAV_HOST.getValue(), CLAMAV_PORT.getValue(), CLAMAV_CONNECTION_TIMEOUT.getValue());
-            try {
-                MalwareScannerManager.getInstance().initialize(clamAv);
-            } catch (IOException e) {
-                Log.warn("Unable to initialize integration with the ClamAV malware scanner daemon (at {}:{}).", CLAMAV_HOST.getValue(), CLAMAV_PORT.getValue(), e);
-            }
-        }
-    }
+	/**
+	 * Re-evaluates property values and applies any change to affects the web
+	 * context root to be used when announcing endpoint URLs.
+	 */
+	public static void applyWebContextRootConfiguration() {
+		final SlotManager slotManager = SlotManager.getInstance();
+		final String existing = slotManager.getWebContextRoot();
+		final String updated = getWebContextRootFromProperties();
+		if (!Objects.equals(existing, updated)) {
+			slotManager.setWebContextRoot(updated);
+			Log.info(
+					"Reconfigured announced web context root from '{}' to '{}'. New web endpoint: {}://{}:{}{} with a max file size of {} bytes.",
+					existing, updated, slotManager.getWebProtocol(), slotManager.getWebHost(), slotManager.getWebPort(),
+					slotManager.getWebContextRoot(), slotManager.getMaxFileSize());
+		}
+	}
 
-    @Override
-    public void initializePlugin( PluginManager manager, File pluginDirectory )
-    {
-        try
-        {
-            PropertyEventDispatcher.addListener(this);
+	/**
+	 * Re-evaluates property values and applies any change to affects maximum
+	 * allowable file size of content to be uploaded.
+	 */
+	public static void applyMaxFileSizeConfiguration() {
+		final SlotManager slotManager = SlotManager.getInstance();
+		final Long existing = slotManager.getMaxFileSize();
+		final Long updated = getMaxFileSizeProperties();
+		if (!Objects.equals(existing, updated)) {
+			slotManager.setMaxFileSize(updated);
+			Log.info("Reconfigured maximum file size from '{}' to '{}'.", existing, updated);
+		}
+	}
 
-            SlotManager.getInstance().initialize(new OpenfireSlotProvider());
+	public static void applyClamAvConfiguration() {
+		final MalwareScannerManager manager = MalwareScannerManager.getInstance();
+		manager.destroy();
 
-            applyWebProtocolConfiguration();
-            applyWebHostConfiguration();
-            applyWebPortConfiguration();
-            applyWebContextRootConfiguration();
-            applyMaxFileSizeConfiguration();
-            applyClamAvConfiguration();
+		if (CLAMAV_ENABLED.getValue()) {
+			final MalwareScanner clamAv = new ClamavMalwareScanner(CLAMAV_HOST.getValue(), CLAMAV_PORT.getValue(),
+					CLAMAV_CONNECTION_TIMEOUT.getValue());
+			try {
+				MalwareScannerManager.getInstance().initialize(clamAv);
+			} catch (IOException e) {
+				Log.warn("Unable to initialize integration with the ClamAV malware scanner daemon (at {}:{}).",
+						CLAMAV_HOST.getValue(), CLAMAV_PORT.getValue(), e);
+			}
+		}
+	}
 
-            Repository repository;
-            final String fileRepo = getFileRepoFromProperties();
+	public static void applyDatabaseRepoConfiguration() {
 
-            if ( fileRepo == null)
-            {
-                repository = new TempDirectoryRepository();
-            }
-            else {
-                try {
-                    final Path path = Paths.get( fileRepo );
-                    repository = new DirectoryRepository( path );
+	}
 
-                } catch ( InvalidPathException e ) {
-                    Log.error( "Invalid value for 'fileRepo' option: " + e.getMessage() );
-                    repository = new TempDirectoryRepository();
-                }
-            }
-            RepositoryManager.getInstance().initialize( repository );
+	public static void applySlotsConfiguration() {
 
-            component = new Component( XMPPServer.getInstance().getServerInfo().getXMPPDomain());
+	}
+	
+	public static void applyPurgeConfiguration() {
 
-            // Add the webapp to the same context as the one that's providing the BOSH interface.
-            context = new WebAppContext( null, pluginDirectory.getPath() + File.separator + "classes", "/httpfileupload" );
-            context.setClassLoader( this.getClass().getClassLoader() );
-            HttpBindManager.getInstance().addJettyHandler( context );
+	}
+	
+	public static void applyMaxDaysConfiguration() {
 
-            InternalComponentManager.getInstance().addComponent( "httpfileupload", component );
-        }
-        catch ( Exception e )
-        {
-            Log.error( "Unable to register component!", e );
-        }
-    }
+	}
 
-    @Override
-    public void destroyPlugin()
-    {
-        if ( context != null )
-        {
-            HttpBindManager.getInstance().removeJettyHandler( context );
-            context.destroy();
-            context = null;
-        }
+	@Override
+	public void initializePlugin(PluginManager manager, File pluginDirectory) {
+		try {
+			PropertyEventDispatcher.addListener(this);
 
-        if ( component != null )
-        {
-            InternalComponentManager.getInstance().removeComponent( "httpfileupload" );
-        }
+			SlotManager.getInstance().initialize(new OpenfireSlotProvider());
 
-        PropertyEventDispatcher.removeListener(this);
+			applyWebProtocolConfiguration();
+			applyWebHostConfiguration();
+			applyWebPortConfiguration();
+			applyWebContextRootConfiguration();
+			applyMaxFileSizeConfiguration();
+			applyClamAvConfiguration();
+			applyDatabaseRepoConfiguration();
+			applySlotsConfiguration();
+			applyPurgeConfiguration();
+			applyMaxDaysConfiguration();
 
-        CacheFactory.dereferenceSerializingCache(OpenfireSlotProvider.CACHE_NAME);
-    }
-    
-    public void check(String fileRepo ) throws IOException {
-      try {
-        final Path path = Paths.get( fileRepo );
+			Repository repository;
+			final String fileRepo = getFileRepoFromProperties();
+			
+			if (DATABASE_REPO.getValue())
+			{
+				repository = new DatabaseRepository();
+			}
+			else
+			{
+				if (fileRepo == null) {
+					repository = new TempDirectoryRepository();
+				} else {
+					try {
+						final Path path = Paths.get(fileRepo);
+						repository = new DirectoryRepository(path);
+	
+					} catch (InvalidPathException e) {
+						Log.error("Invalid value for 'fileRepo' option: " + e.getMessage());
+						repository = new TempDirectoryRepository();
+					}
+				}
+			}
+			RepositoryManager.getInstance().initialize(repository);
 
-        if ( !path.toFile().exists() ) {
-          throw new IOException("Path '" + path + "' does not exists");
-        }
-        if ( !path.toFile().isDirectory() ) {
-           throw new IOException("Path '" + path + "' not a directory");
-        }
-        if ( !path.toFile().canWrite() ) {
-          throw new IOException("Path '" + path + "' not writable");
-        }
+			component = new Component(XMPPServer.getInstance().getServerInfo().getXMPPDomain());
 
-      } catch ( InvalidPathException e ) {
-        throw new IOException( "Invalid value '" + fileRepo + "': " + e.getMessage() );
-      }
-    }
-    
-    public String getAnnouncedAddress() throws URISyntaxException {
-      
-        final URI uri = new URI(
-            getWebProtocolFromProperties(),
-            null, // userinfo
-            getWebHostFromProperties(),
-            getWebPortFromProperties(),
-            getWebContextRootFromProperties(),
-            null, // query
-            null // fragment
-        );
-        return uri.toASCIIString();
-    }
+			// Add the webapp to the same context as the one that's providing the BOSH
+			// interface.
+			context = new WebAppContext(null, pluginDirectory.getPath() + File.separator + "classes",
+					"/httpfileupload");
+			context.setClassLoader(this.getClass().getClassLoader());
+			HttpBindManager.getInstance().addJettyHandler(context);
 
-    @Override
-    public void propertySet(String property, Map params) {
-        // Ignored: 'regular' property configuration is handled through the SystemProperties implementation.
-    }
+			InternalComponentManager.getInstance().addComponent("httpfileupload", component);
+		} catch (Exception e) {
+			Log.error("Unable to register component!", e);
+		}
+	}
 
-    @Override
-    public void propertyDeleted(String property, Map params) {
-        // Ignored: 'regular' property configuration is handled through the SystemProperties implementation.
-    }
+	@Override
+	public void destroyPlugin() {
+		if (context != null) {
+			HttpBindManager.getInstance().removeJettyHandler(context);
+			context.destroy();
+			context = null;
+		}
 
-    @Override
-    public void xmlPropertySet(String property, Map params)
-    {
-        switch (property) {
-            case "plugin.httpfileupload.serverspecific.announcedWebProtocol":
-                applyWebProtocolConfiguration();
-                break;
+		if (component != null) {
+			InternalComponentManager.getInstance().removeComponent("httpfileupload");
+		}
 
-            case "plugin.httpfileupload.serverspecific.announcedWebHost":
-                applyWebHostConfiguration();
-                break;
+		PropertyEventDispatcher.removeListener(this);
 
-            case "plugin.httpfileupload.serverspecific.announcedWebPort":
-                applyWebPortConfiguration();
-                break;
+		CacheFactory.dereferenceSerializingCache(OpenfireSlotProvider.CACHE_NAME);
+	}
 
-            case "plugin.httpfileupload.serverspecific.announcedWebContextRoot":
-                // Not dynamic // TODO figure out why this isn't dynamic.
-                // applyWebContextRootConfiguration();
-                break;
+	public void check(String fileRepo) throws IOException {
+		try {
+			final Path path = Paths.get(fileRepo);
 
-            case "plugin.httpfileupload.serverspecific.maxFileSize":
-                applyMaxFileSizeConfiguration();
-                break;
+			if (!path.toFile().exists()) {
+				throw new IOException("Path '" + path + "' does not exists");
+			}
+			if (!path.toFile().isDirectory()) {
+				throw new IOException("Path '" + path + "' not a directory");
+			}
+			if (!path.toFile().canWrite()) {
+				throw new IOException("Path '" + path + "' not writable");
+			}
 
-            case "plugin.httpfileupload.serverspecific.fileRepo":
-                // Not dynamic
-                break;
-        }
-    }
+		} catch (InvalidPathException e) {
+			throw new IOException("Invalid value '" + fileRepo + "': " + e.getMessage());
+		}
+	}
 
-    @Override
-    public void xmlPropertyDeleted(String property, Map params)
-    {
-        xmlPropertySet(property, params);
-    }
+	public String getAnnouncedAddress() throws URISyntaxException {
+
+		final URI uri = new URI(getWebProtocolFromProperties(), null, // userinfo
+				getWebHostFromProperties(), getWebPortFromProperties(), getWebContextRootFromProperties(), null, // query
+				null // fragment
+		);
+		return uri.toASCIIString();
+	}
+
+	@Override
+	public void propertySet(String property, Map params) {
+		// Ignored: 'regular' property configuration is handled through the
+		// SystemProperties implementation.
+	}
+
+	@Override
+	public void propertyDeleted(String property, Map params) {
+		// Ignored: 'regular' property configuration is handled through the
+		// SystemProperties implementation.
+	}
+
+	@Override
+	public void xmlPropertySet(String property, Map params) {
+		switch (property) {
+		case "plugin.httpfileupload.serverspecific.announcedWebProtocol":
+			applyWebProtocolConfiguration();
+			break;
+
+		case "plugin.httpfileupload.serverspecific.announcedWebHost":
+			applyWebHostConfiguration();
+			break;
+
+		case "plugin.httpfileupload.serverspecific.announcedWebPort":
+			applyWebPortConfiguration();
+			break;
+
+		case "plugin.httpfileupload.serverspecific.announcedWebContextRoot":
+			// Not dynamic // TODO figure out why this isn't dynamic.
+			// applyWebContextRootConfiguration();
+			break;
+
+		case "plugin.httpfileupload.serverspecific.maxFileSize":
+			applyMaxFileSizeConfiguration();
+			break;
+
+		case "plugin.httpfileupload.serverspecific.fileRepo":
+			// Not dynamic
+			break;
+
+		case "plugin.httpfileupload.serverspecific.useDatabase":
+			applyDatabaseRepoConfiguration();
+			break;
+
+		case "plugin.httpfileupload.serverspecific.slots":
+			applySlotsConfiguration();
+			break;
+
+		case "plugin.httpfileupload.serverspecific.purge_storage.enable":
+			applyPurgeConfiguration();
+			break;
+			
+		case "plugin.httpfileupload.serverspecific.purge_storage.store_max_days":
+			applyMaxDaysConfiguration();
+			break;
+		}
+	}
+
+	@Override
+	public void xmlPropertyDeleted(String property, Map params) {
+		xmlPropertySet(property, params);
+	}
 }

@@ -61,7 +61,14 @@
         String announcedWebHost = request.getParameter("announcedWebHost");
         Integer announcedPort = ParamUtils.getIntParameter(request, "announcedPort", HttpFileUploadPlugin.ANNOUNCED_WEB_PORT.getValue());
         String announcedContextRoot = request.getParameter("announcedContextRoot");
+        
         long maxFileSize = ParamUtils.getLongParameter(request, "maxFileSize", HttpFileUploadPlugin.MAX_FILE_SIZE.getValue());
+
+        int store_max_days = ParamUtils.getIntParameter(request, "store_max_days", HttpFileUploadPlugin.AUTO_PURGE_MAXDAYS.getValue());
+        boolean purge_storage = ParamUtils.getParameter(request,"purge_storage")!=null&&ParamUtils.getParameter(request,"purge_storage").equals("on")?true:false;
+        boolean slots = ParamUtils.getParameter(request,"slots")!=null&&ParamUtils.getParameter(request,"slots").equals("on")?true:false;
+        boolean useDatabase = ParamUtils.getParameter(request,"useDatabase")!=null&&ParamUtils.getParameter(request,"useDatabase").equals("on")?true:false;
+
         fileRepo = request.getParameter("fileRepo");
 
         if ( fileRepo != null && !fileRepo.equals("") ) {
@@ -99,12 +106,21 @@
           HttpFileUploadPlugin.FILE_REPO.setValue(fileRepo);
           HttpFileUploadPlugin.MAX_FILE_SIZE.setValue(maxFileSize);
 
+          HttpFileUploadPlugin.AUTO_PURGE_MAXDAYS.setValue(store_max_days);
+          HttpFileUploadPlugin.AUTO_PURGE.setValue(purge_storage);
+          HttpFileUploadPlugin.SLOTS.setValue(slots);
+          HttpFileUploadPlugin.DATABASE_REPO.setValue(useDatabase);
+
           webManager.logEvent("Changed HTTP File Upload settings (httpfileupload plugin)",
                                 "announced Protocol: " + announcedProtocol
 		                                + ", announced Web Host: " + announcedWebHost
 		                                + ", announced Port: " + announcedPort
 		                                + ", announced Context Root: " + announcedContextRoot
                                     + ", File Directory: " + fileRepo
+                                    + ", Store files for days: " + store_max_days
+                                    + ", Auto Purge: " + purge_storage
+                                    + ", Force Slots: " + slots
+                                    + ", Use Database: " + useDatabase
                                     + ", maxFileSize: " + maxFileSize );
 
 %>
@@ -138,6 +154,11 @@
     request.setAttribute("announcedWebPort", HttpFileUploadPlugin.ANNOUNCED_WEB_PORT.getValue());
     request.setAttribute("announcedContextRoot", HttpFileUploadPlugin.ANNOUNCED_WEB_CONTEXT_ROOT.getValue());
     request.setAttribute("maxFileSize", HttpFileUploadPlugin.MAX_FILE_SIZE.getValue());
+    request.setAttribute("store_max_days", HttpFileUploadPlugin.AUTO_PURGE_MAXDAYS.getValue());
+    request.setAttribute("purge_storage", HttpFileUploadPlugin.AUTO_PURGE.getValue());
+    request.setAttribute("slots", HttpFileUploadPlugin.SLOTS.getValue());
+    request.setAttribute("useDatabase", HttpFileUploadPlugin.DATABASE_REPO.getValue());
+    
 %>
 
 <c:if test="${not empty errors}">
@@ -238,7 +259,7 @@
 	                   <fmt:message key="system_property.plugin.httpfileupload.fileRepo"/><br>
                      <fmt:message key="httpfileupload.settings.fileRepo.cluster.desc"/></td>
 	               <td>
-	                   <input type="text" name="fileRepo" id="fileRepo" size="30" maxlength="250" value="${admin:escapeHTMLTags(fileRepo)}" />
+	                   <input type="text" name="fileRepo" id="fileRepo" size="30" maxlength="250" value="${admin:escapeHTMLTags(fileRepo)}"  <c:if test="${useDatabase}">disabled</c:if>/>
 	               </td>
 	               <td></td>
               </tr>
@@ -253,6 +274,59 @@
 	               <td></td>
 	           </tr>
             
+        </tbody>
+      </table>
+    </admin:contentBox>
+
+    <c:set var="databasetitle"><fmt:message key="httpfileupload.settings.message.database.title"/></c:set>
+    <admin:contentBox title="${databasetitle}">
+      <table>
+        <tbody>
+            <tr>
+                <td colspan="3"><p><fmt:message key="httpfileupload.settings.message.database.description" /></p></td>
+            </tr>
+            <tr> 
+               <td>
+                   <label class="jive-label" for="useDatabase"><fmt:message key="httpfileupload.settings.httpfileupload.useDatabase.title"/>:</label>
+                   <br>
+                   <fmt:message key="system_property.plugin.httpfileupload.useDatabase"/><br>
+                    <fmt:message key="httpfileupload.settings.httpfileupload.useDatabase.desc"/></td>
+               <td>
+                   <input type="checkbox" name="useDatabase" id="useDatabase" size="10" maxlength="10"  <c:if test="${useDatabase}">checked</c:if>  />
+               </td>
+               <td></td>
+             </tr>
+               <tr> 
+               <td>
+                   <label class="jive-label" for="slots"><fmt:message key="httpfileupload.settings.httpfileupload.slots.title"/>:</label>
+                   <br>
+                   <fmt:message key="system_property.plugin.httpfileupload.slots"/></td>
+               <td>
+                   <input type="checkbox" name="slots" id="slots" size="10" maxlength="10" <c:if test="${slots}">checked</c:if>  />
+               </td>
+               <td></td>
+             </tr>
+               <tr> 
+               <td>
+                   <label class="jive-label" for="purge_storage"><fmt:message key="httpfileupload.settings.httpfileupload.purge_storage.enable.title"/>:</label>
+                   <br>
+                   <fmt:message key="system_property.plugin.httpfileupload.purge_storage.enable"/></td>
+               <td>
+                   <input type="checkbox" name="purge_storage" id="purge_storage" size="10" maxlength="10" <c:if test="${purge_storage}">checked</c:if>  />
+               </td>
+               <td></td>
+             </tr>
+              <tr> 
+               <td>
+                   <label class="jive-label" for="store_max_days"><fmt:message key="httpfileupload.settings.httpfileupload.purge_storage.store_max_days.title"/>:</label>
+                   <br>
+                   <fmt:message key="system_property.plugin.httpfileupload.purge_storage.store_max_days"/></td>
+               <td>
+                   <input type="number" name="store_max_days" id="store_max_days" size="10" maxlength="10" value="${store_max_days}" />
+               </td>
+               <td></td>
+             </tr>
+           
         </tbody>
       </table>
     </admin:contentBox>
