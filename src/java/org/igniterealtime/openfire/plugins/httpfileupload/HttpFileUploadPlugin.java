@@ -586,23 +586,7 @@ public class HttpFileUploadPlugin implements Plugin, PropertyEventListener {
 		case "plugin.httpfileupload.serverspecific.fileRepo":
 			// Not dynamic
 			break;
-
-		case "plugin.httpfileupload.serverspecific.useDatabase":
-			applyDatabaseRepoConfiguration();
-			break;
-
-		case "plugin.httpfileupload.serverspecific.slots":
-			applySlotsConfiguration();
-			break;
-
-		case "plugin.httpfileupload.serverspecific.purge_storage.enable":
-			applyPurgeConfiguration();
-			break;
-			
-		case "plugin.httpfileupload.serverspecific.purge_storage.store_max_days":
-			applyMaxDaysConfiguration();
-			break;
-		}
+        }
 	}
 
 	@Override
